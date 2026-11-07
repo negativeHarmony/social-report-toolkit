@@ -1,0 +1,13 @@
+# Secrets - never commit
+.env
+
+# Local data (pulled datasets and exported CSVs)
+data/
+
+# Python / tooling clutter
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+build/
+dist/

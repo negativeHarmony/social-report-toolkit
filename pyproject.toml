@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "social-report-toolkit"
+version = "0.1.0"
+description = "AI-assisted social media reporting pipeline: pull, clean, report, narrate, verify."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = ["mcp>=2", "python-dotenv", "requests"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+social-report-mcp = "social_report_toolkit.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
