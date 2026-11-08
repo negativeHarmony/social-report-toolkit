@@ -6,7 +6,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 
 # Dataset ID pattern
@@ -19,17 +19,21 @@ def data_dir() -> Path:                                                     # �
 
 
 # Save dataset to disk and return its ID
-def save_dataset(rows: List[dict], source: str) -> str:
-    pulled_at = datetime.now(timezone.utc)
-    dataset_id = f"{source}_{pulled_at:%Y%m%dT%H%M%SZ}"
-    data_dir().mkdir(parents=True, exist_ok=True)                           # ← changed
+# Save dataset to disk and return its ID
+def save_dataset(rows: List[dict], source: str, derived_from: Optional[str] = None,
+                 pulled_at: Optional[str] = None) -> str:
+    now = datetime.now(timezone.utc)
+    dataset_id = f"{source}_{now:%Y%m%dT%H%M%SZ}"
+    data_dir().mkdir(parents=True, exist_ok=True)
     payload = {
         "dataset_id": dataset_id,
         "source": source,
-        "pulled_at": pulled_at.isoformat(timespec="seconds"),
+        "created_at": now.isoformat(timespec="seconds"),
+        "pulled_at": pulled_at or now.isoformat(timespec="seconds"),
+        "derived_from": derived_from,
         "rows": rows,
     }
-    with open(data_dir() / f"{dataset_id}.json", "w", encoding="utf-8") as f:  # ← changed
+    with open(data_dir() / f"{dataset_id}.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     return dataset_id
 

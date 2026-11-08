@@ -10,6 +10,7 @@ from mcp.server.mcpserver import MCPServer
 from .datasets import load_dataset, save_dataset
 from .export import export_csv as write_csv
 from .youtube import pull_channel
+from .clean import clean_dataset as make_clean_dataset
 
 MAX_CHANNELS = 10
 
@@ -30,7 +31,7 @@ def pull_youtube(handles: List[str], limit: int = 50) -> dict:
     for 1-10 YouTube channels and save them as a dataset. Pass channel handles like
     "@fallontonight". limit = videos per channel (1-50, default 50).
     Returns a dataset_id and a summary, not the data itself. Pass the dataset_id to
-    export_csv to get a CSV. Hidden like counts and disabled comments are stored as
+    clean_dataset for analysis-ready metrics, or to export_csv for the raw CSV. Hidden like counts and disabled comments are stored as
     blank, never as 0."""
     if not 1 <= len(handles) <= MAX_CHANNELS:
         raise ValueError(f"Give between 1 and {MAX_CHANNELS} channel handles")
@@ -64,6 +65,29 @@ def export_csv(dataset_id: str) -> dict:
     path = write_csv(dataset_id)
     rows = len(load_dataset(dataset_id)["rows"])
     return {"csv_path": str(path.resolve()), "rows": rows}
+
+
+@mcp.tool()
+def clean_dataset(dataset_id: str) -> dict:
+    """Clean a raw YouTube dataset (from pull_youtube) into an analysis-ready dataset and
+    return its new dataset_id. Adds: posting day/hour in US Eastern time, format
+    (short_form / long_form), engagement_rate = (likes + comments) / views as a fraction,
+    age_days at pull time, and views_per_day (blank for videos under 1 day old).
+    Metrics are left blank, never 0, when likes or comments are hidden.
+    The raw dataset is not changed. Pass the new dataset_id to export_csv."""
+    clean_id = make_clean_dataset(dataset_id)
+    rows = load_dataset(clean_id)["rows"]
+    return {
+        "dataset_id": clean_id,
+        "derived_from": dataset_id,
+        "rows": len(rows),
+        "rows_without_engagement_rate": sum(1 for row in rows if row["engagement_rate"] is None),
+        "rows_without_views_per_day": sum(1 for row in rows if row["views_per_day"] is None),
+        "earliest_post_utc": min((row["published_at_utc"] for row in rows), default=None),
+        "latest_post_utc": max((row["published_at_utc"] for row in rows), default=None),
+    }
+
+
 
 
 def main() -> None:

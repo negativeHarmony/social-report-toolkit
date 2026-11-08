@@ -20,11 +20,11 @@ def run(action):
     return asyncio.run(_with_session(action))
 
 
-def test_lists_both_tools():
+def test_lists_all_tools():
     async def action(session):
         result = await session.list_tools()
         return {tool.name for tool in result.tools}
-    assert run(action) == {"pull_youtube", "export_csv"}
+    assert run(action) == {"pull_youtube", "clean_dataset", "export_csv"}
 
 
 def test_rejects_empty_channel_list():

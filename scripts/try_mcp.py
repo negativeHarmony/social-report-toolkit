@@ -33,7 +33,10 @@ async def main():
             })
             print("pull_youtube ->", json.dumps(summary, indent=2))
 
-            export = await call(session, "export_csv", {"dataset_id": summary["dataset_id"]})
+            cleaned = await call(session, "clean_dataset", {"dataset_id": summary["dataset_id"]})
+            print("clean_dataset ->", json.dumps(cleaned, indent=2))
+
+            export = await call(session, "export_csv", {"dataset_id": cleaned["dataset_id"]})
             print("export_csv ->", json.dumps(export, indent=2))
 
 

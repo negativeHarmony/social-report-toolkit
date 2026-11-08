@@ -11,6 +11,13 @@ COLUMNS_BY_SOURCE = {
         "pulled_at", "channel_handle", "channel_title", "video_id", "title",
         "published_at", "duration_seconds", "is_short_form", "views", "likes", "comments",
     ],
+    "clean": [
+        "pulled_at", "platform", "account_handle", "account_name", "post_id", "title",
+        "published_at_utc", "posted_local", "posted_day", "posted_hour",
+        "format", "duration_seconds",
+        "views", "likes", "comments",
+        "engagement_rate", "age_days", "views_per_day",
+    ],
 }
 
 #export to csv with column sources
