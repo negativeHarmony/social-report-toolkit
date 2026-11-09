@@ -35,9 +35,17 @@ async def main():
 
             cleaned = await call(session, "clean_dataset", {"dataset_id": summary["dataset_id"]})
             print("clean_dataset ->", json.dumps(cleaned, indent=2))
+            facts = await call(session, "get_report_facts", {"dataset_id": cleaned["dataset_id"]})
+            print("get_report_facts -> keys:", list(facts.keys()))
 
-            report = await call(session, "build_report", {"dataset_id": cleaned["dataset_id"]})
-            print("build_report ->", json.dumps(report, indent=2))
+            narrative = (
+                "Overall engagement across the 3 channels was 3.0%. "
+                "Kimmel reached 99.9%. "
+                "One day reached 6.2%."
+            )
+            result = await call(session, "check_narrative",
+                                {"dataset_id": cleaned["dataset_id"], "narrative": narrative})
+            print("check_narrative ->", json.dumps(result, indent=2))
 
 
 asyncio.run(main())

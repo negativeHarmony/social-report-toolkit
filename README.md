@@ -1,26 +1,32 @@
 # social-report-toolkit
 
 An MCP server that lets an AI agent (Claude, Hermes or any MCP client) pull YouTube channel
-performance data, clean it into analysis-ready metrics, and turn it into a client-ready
-Excel + PowerPoint report, **without the model ever handling the numbers**.
+performance data, clean it into analysis-ready metrics, build a client-ready Excel + PowerPoint
+report, and write a narrative whose **every number is checked against the data in code**.
 
-Stages 1–3 of an AI-assisted social media reporting pipeline:
-**pull** → **clean** → **report** → narrate → verify.
+A complete AI-assisted social media reporting pipeline:
+**pull** → **clean** → **report** → **narrate** → **verify**.
 
 ## Why it's built this way
 
-LLMs are good at deciding what to do and bad at copying large tables of numbers exactly.
-So the tools never send the data through the model:
+LLMs are good at deciding what to do and writing clearly, but bad at copying large tables of
+numbers exactly, and they can state wrong numbers with total confidence. So:
+
+- **The data never passes through the model.** Tools pass dataset IDs, and every number is
+  fetched, stored and calculated in code.
+- **When the model does write numbers** (in a narrative), code checks every one of them before
+  the narrative reaches a person.
 
 ```
 AI → pull_youtube(["@fallontonight", ...])  → youtube_<timestamp>    (raw dataset)
 AI → clean_dataset("youtube_<timestamp>")    → clean_<timestamp>      (cleaned dataset)
 AI → build_report("clean_<timestamp>")       → .xlsx + .pptx paths    (report)
+AI → get_report_facts("clean_<timestamp>")   → summary numbers + definitions + writing rules
+AI   writes a narrative
+AI → check_narrative("clean_<timestamp>", narrative)  → a verdict for every number
+AI   fixes every problem and checks again before showing the narrative
 AI → export_csv(any dataset_id)              → path to a CSV          (optional)
 ```
-
-Each step passes a dataset ID, never the data. The model orchestrates; every number is
-fetched, stored and calculated in code.
 
 ## Data accuracy
 
@@ -32,6 +38,8 @@ fetched, stored and calculated in code.
 - **`is_short_form` is an approximation.** The YouTube API has no "is a Short" field, so videos
   of 180 seconds or less are flagged. This also catches short regular videos.
 - **Up to 50 recent videos per channel** (one API page), taken from the channel's uploads playlist.
+  Channels that post at different rates cover different time spans, so compare rates
+  (engagement, views per day) rather than totals across channels.
 
 ## Cleaned metrics
 
@@ -76,6 +84,34 @@ Both files are built from the same calculation in the same run, so their numbers
 | Total views | Sum of all known view counts. |
 | Base counts | Every average reports how many videos it was calculated from ("Videos in engagement rate", "Videos in views/day"), so thin groups are visible. |
 
+## Narrative and verification
+
+`get_report_facts` gives the agent the report's summary numbers (the same ones as the Excel and
+PowerPoint files), plain-English definitions, and writing rules: use only these numbers, one
+claim per sentence naming its channel, format or day, and round without inventing precision.
+
+`check_narrative` then finds every number in the narrative, works out which sentence it is in and
+which channel, format or day that sentence names, and gives it a verdict:
+
+| Verdict | Meaning | Example |
+|---|---|---|
+| `verified` | A correct rounding of a real value, attributed to the right subject | "Colbert led at 3.42%" |
+| `wrong_subject` | A real value, but it belongs to a different subject (the result says whose) | "Fallon led at 3.42%" when 3.42% is Colbert's |
+| `unclear_subject` | A real value, but the sentence doesn't say whose it is | "One day reached 6.2%" |
+| `not_found` | Not in the data: invented, or wrongly rounded | "Engagement hit 8.1%" |
+
+**How matching works**
+- **Rounding is judged by the digits written.** "3.4%" is correct for a true 3.42%, but "3.5%" and
+  "3.43%" are not. Writing more decimals claims more precision and is held to it.
+- **Percentages only match rates**, and counts only match counts.
+- **Units are understood**: `42.4 million`, `21.7K`, `3.42%`, `42,350,498`.
+- **Dates and clock times are skipped** (`2026-11-06`, `11pm`, `23:00`); they are not metrics.
+- **Subjects are recognised by their distinctive words.** Words shared by several channel names
+  (like "Jimmy" in Fallon and Kimmel) and generic TV words are never used to identify a channel.
+
+**Known limitation:** if one sentence names two subjects, a number belonging to either one passes.
+The writing rule "one claim per sentence" avoids this.
+
 ## Tools
 
 | Tool | Input | Returns |
@@ -83,6 +119,8 @@ Both files are built from the same calculation in the same run, so their numbers
 | `pull_youtube` | `handles`: 1–10 channel handles (e.g. `"@fallontonight"`), `limit`: videos per channel (1–50, default 50) | `dataset_id`, total videos, videos per channel, counts of hidden likes / comments off |
 | `clean_dataset` | `dataset_id` from `pull_youtube` | New `dataset_id`, the raw ID it came from, row count, counts of blank metrics, date range of posts |
 | `build_report` | `dataset_id` from `clean_dataset` | Full paths of the Excel and PowerPoint files, number of videos and accounts |
+| `get_report_facts` | `dataset_id` from `clean_dataset` | Period, pull time, definitions, writing rules and the summary numbers |
+| `check_narrative` | `dataset_id` from `clean_dataset`, `narrative` text (max 20,000 characters) | Numbers checked, `all_verified`, counts per verdict, and each problem with its sentence and what it actually matches |
 | `export_csv` | `dataset_id` (raw or cleaned) | Full path of the CSV and its row count |
 
 **Safety:** dataset IDs are validated against a strict pattern, so a tool call can't read or write
@@ -164,7 +202,7 @@ claude mcp add --scope user \
 **Other MCP clients:** run `social-report-mcp` with the same environment variables.
 
 Then ask, for example:
-> Pull the last 50 videos from @fallontonight, @ColbertLateShow and @JimmyKimmelLive, clean the data and build a report.
+> Pull the last 50 videos from @fallontonight, @ColbertLateShow and @JimmyKimmelLive, clean the data, build a report, and write a short summary of the results. Check every number before showing it to me.
 
 ### Updating
 
@@ -179,7 +217,8 @@ Then restart your agent so it starts the updated server.
 
 ## Try it without an agent
 
-`scripts/try_mcp.py` starts the server and runs pull → clean → report, the way an agent would:
+`scripts/try_mcp.py` starts the server and runs pull → clean → facts → check, the way an agent
+would, using a deliberately flawed narrative so you can see the verdicts:
 
 ```bash
 python scripts/try_mcp.py
@@ -192,17 +231,23 @@ pip install -e ".[dev]"
 python -m pytest -v
 ```
 
-The tests check the cleaning rules (engagement rate, US Eastern posting times with daylight
-saving, views per day, age measured at pull time, hidden counts kept blank) and, through a real
-MCP client connection, the tool list, the channel limit and the dataset-ID path check.
+The tests check:
+- **Cleaning rules**: engagement rate, US Eastern posting times with daylight saving, views per day,
+  age measured at pull time, hidden counts kept blank
+- **The narrative checker**: dates and times skipped, units read, sentence splitting around decimals,
+  rounding judged by the digits written, percentages never matching counts, shared name words never
+  used as aliases, and each verdict, including catching a number attributed to the wrong channel
+- **The MCP server**, through a real client connection: the tool list, the channel limit and the
+  dataset-ID path check
 
 ## Roadmap
 
 - [x] Stage 1: pull YouTube data and export to CSV
 - [x] Stage 2: clean and normalise (engagement rate, posting day/hour, views per day)
 - [x] Stage 3: one-click Excel and PowerPoint report
-- [ ] Stage 4: AI-written narrative
-- [ ] Stage 5: automatic check of every number in the narrative against the source data
+- [x] Stage 4: AI-written narrative from the report's numbers
+- [x] Stage 5: automatic check of every number in the narrative against the source data
+- [ ] Optional date range, so every channel is compared over the same period
 
 ## License
 

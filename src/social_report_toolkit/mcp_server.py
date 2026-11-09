@@ -12,6 +12,8 @@ from .export import export_csv as write_csv
 from .youtube import pull_channel
 from .clean import clean_dataset as make_clean_dataset
 from .report import build_report as make_report
+from .summary import build_summary
+from .verify import build_facts, check_narrative as run_checks
 
 MAX_CHANNELS = 10
 
@@ -24,6 +26,18 @@ def _api_key() -> str:
     if not key:
         raise RuntimeError("YOUTUBE_API_KEY is not set")
     return key
+
+MAX_NARRATIVE_CHARS = 20_000
+VERDICTS = ["verified", "wrong_subject", "unclear_subject", "not_found"]
+
+
+def _clean_summary(dataset_id: str):
+    dataset = load_dataset(dataset_id)
+    if dataset["source"] != "clean":
+        raise ValueError(f"Needs a cleaned dataset (from clean_dataset), got '{dataset['source']}'")
+    if not dataset["rows"]:
+        raise ValueError("Dataset has no rows")
+    return dataset, build_summary(dataset["rows"])
 
 
 @mcp.tool()
@@ -100,6 +114,61 @@ def build_report(dataset_id: str) -> dict:
         "slides_path": str(result["slides_path"]),
         "videos": result["videos"],
         "accounts": result["accounts"],
+    }
+    
+@mcp.tool()
+def get_report_facts(dataset_id: str) -> dict:
+    """Get the summary numbers of a CLEANED dataset, to write a narrative about the report.
+    These are the same numbers as build_report's Excel and PowerPoint files.
+    Use ONLY these numbers, follow the writing_rules, then call check_narrative with your
+    draft and fix every problem it reports before showing the narrative to the user."""
+    dataset, summary = _clean_summary(dataset_id)
+    dates = sorted(row["published_at_utc"] for row in dataset["rows"])
+    return {
+        "dataset_id": dataset_id,
+        "period_utc": {"from": dates[0][:10], "to": dates[-1][:10]},
+        "pulled_at": dataset["pulled_at"],
+        "definitions": {
+            "engagement_rate": "(likes + comments) / views, as a FRACTION: 0.0342 means 3.42%. "
+                               "Weighted across videos with complete counts.",
+            "median_views_per_day": "Median of each video's views / age in days. Videos under 1 day old are excluded.",
+            "videos_in_engagement_rate": "How many videos the engagement rate is based on.",
+            "videos_in_views_per_day": "How many videos the median views per day is based on.",
+            "posted_day": "Day of posting in US Eastern time.",
+            "format": "short_form = 180 seconds or less (approximation of YouTube Shorts); long_form = longer.",
+        },
+        "writing_rules": [
+            "Use only numbers from this summary. Do not calculate new ones.",
+            "One claim per sentence, naming its channel, format or day.",
+            "Write rates as percentages (0.0342 -> 3.42% or 3.4%); round, never invent precision.",
+            "When a group has few videos (see videos_in_* counts), say so.",
+        ],
+        "summary": summary,
+    }
+    
+    
+@mcp.tool()
+def check_narrative(dataset_id: str, narrative: str) -> dict:
+    """Check every number in a narrative against a CLEANED dataset's summary.
+    Verdicts: verified = correct and attributed to the right channel/format/day;
+    wrong_subject = the number exists but belongs to a different subject (see matches_in_data);
+    unclear_subject = the number exists but the sentence does not say whose it is;
+    not_found = the number is not in the data (invented or wrongly rounded).
+    Fix every problem and check again until all_verified is true."""
+    if len(narrative) > MAX_NARRATIVE_CHARS:
+        raise ValueError(f"Narrative is too long (max {MAX_NARRATIVE_CHARS} characters)")
+    _, summary = _clean_summary(dataset_id)
+    checks = run_checks(narrative, build_facts(summary))
+
+    problems = [
+        {"number": c.number, "verdict": c.verdict, "sentence": c.sentence, "matches_in_data": c.facts}
+        for c in checks if c.verdict != "verified"
+    ]
+    return {
+        "numbers_checked": len(checks),
+        "all_verified": not problems,
+        "counts": {v: sum(1 for c in checks if c.verdict == v) for v in VERDICTS},
+        "problems": problems,
     }
 
 
