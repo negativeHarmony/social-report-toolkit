@@ -11,6 +11,7 @@ from .datasets import load_dataset, save_dataset
 from .export import export_csv as write_csv
 from .youtube import pull_channel
 from .clean import clean_dataset as make_clean_dataset
+from .report import build_report as make_report
 
 MAX_CHANNELS = 10
 
@@ -85,6 +86,20 @@ def clean_dataset(dataset_id: str) -> dict:
         "rows_without_views_per_day": sum(1 for row in rows if row["views_per_day"] is None),
         "earliest_post_utc": min((row["published_at_utc"] for row in rows), default=None),
         "latest_post_utc": max((row["published_at_utc"] for row in rows), default=None),
+    }
+    
+@mcp.tool()
+def build_report(dataset_id: str) -> dict:
+    """Build a client-ready report from a CLEANED dataset (from clean_dataset, not pull_youtube):
+    an Excel workbook (Summary tables, Charts, All videos) and a 5-slide PowerPoint deck.
+    Every number is calculated in code from the saved data. Each average states how many
+    videos it is based on. Returns the full paths of both files."""
+    result = make_report(dataset_id)
+    return {
+        "excel_path": str(result["excel_path"]),
+        "slides_path": str(result["slides_path"]),
+        "videos": result["videos"],
+        "accounts": result["accounts"],
     }
 
 

@@ -36,8 +36,8 @@ async def main():
             cleaned = await call(session, "clean_dataset", {"dataset_id": summary["dataset_id"]})
             print("clean_dataset ->", json.dumps(cleaned, indent=2))
 
-            export = await call(session, "export_csv", {"dataset_id": cleaned["dataset_id"]})
-            print("export_csv ->", json.dumps(export, indent=2))
+            report = await call(session, "build_report", {"dataset_id": cleaned["dataset_id"]})
+            print("build_report ->", json.dumps(report, indent=2))
 
 
 asyncio.run(main())

@@ -9,7 +9,7 @@ description = "AI-assisted social media reporting pipeline: pull, clean, report,
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["mcp>=2", "python-dotenv", "requests"]
+dependencies = ["mcp>=2", "openpyxl", "python-dotenv", "python-pptx", "requests"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

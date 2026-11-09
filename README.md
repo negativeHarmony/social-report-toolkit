@@ -1,10 +1,11 @@
 # social-report-toolkit
 
 An MCP server that lets an AI agent (Claude, Hermes or any MCP client) pull YouTube channel
-performance data, clean it into analysis-ready metrics and export it to CSV,
-**without the model ever handling the numbers**.
+performance data, clean it into analysis-ready metrics, and turn it into a client-ready
+Excel + PowerPoint report, **without the model ever handling the numbers**.
 
-Stages 1–2 of an AI-assisted social media reporting pipeline: **pull** → **clean** → report → narrate → verify.
+Stages 1–3 of an AI-assisted social media reporting pipeline:
+**pull** → **clean** → **report** → narrate → verify.
 
 ## Why it's built this way
 
@@ -12,20 +13,22 @@ LLMs are good at deciding what to do and bad at copying large tables of numbers 
 So the tools never send the data through the model:
 
 ```
-AI → pull_youtube(["@fallontonight", ...])  → youtube_<timestamp>   (raw)
-AI → clean_dataset("youtube_<timestamp>")    → clean_<timestamp>     (cleaned)
-AI → export_csv("clean_<timestamp>")         → path to the CSV
+AI → pull_youtube(["@fallontonight", ...])  → youtube_<timestamp>    (raw dataset)
+AI → clean_dataset("youtube_<timestamp>")    → clean_<timestamp>      (cleaned dataset)
+AI → build_report("clean_<timestamp>")       → .xlsx + .pptx paths    (report)
+AI → export_csv(any dataset_id)              → path to a CSV          (optional)
 ```
 
-Each step passes a dataset ID, never the data. The model orchestrates; the numbers go
-YouTube → JSON → cleaned JSON → CSV untouched.
+Each step passes a dataset ID, never the data. The model orchestrates; every number is
+fetched, stored and calculated in code.
 
 ## Data accuracy
 
 - **Hidden likes and disabled comments are stored as blank, never 0.** "Hidden" and "zero" are
   different facts, and treating them as 0 would distort averages and engagement rates.
-- **Every dataset records when its numbers were pulled** (UTC), and each CSV keeps its dataset's ID,
-  so any number can be traced back to its raw pull in `data/raw/`.
+- **Every dataset records when its numbers were pulled** (UTC), and every cleaned dataset records
+  the raw dataset it came from, so any number in a report can be traced back to its raw pull
+  in `data/raw/`.
 - **`is_short_form` is an approximation.** The YouTube API has no "is a Short" field, so videos
   of 180 seconds or less are flagged. This also catches short regular videos.
 - **Up to 50 recent videos per channel** (one API page), taken from the channel's uploads playlist.
@@ -44,16 +47,55 @@ records the raw dataset it came from (`derived_from`) and when its numbers were 
 | `format` | `short_form` (≤ 180 s) or `long_form`. |
 | `platform`, `account_handle`, `account_name`, `post_id` | Platform-neutral names, so other platforms can share the same table later. |
 
+## Reports
+
+`build_report` turns a **cleaned** dataset into two files with matching names in `data/reports/`.
+
+**Excel workbook** (`report_<dataset_id>.xlsx`)
+- **Summary**: period, pull time and source datasets, then four tables: overall, by account,
+  by format, and by posting day (Monday → Sunday, US Eastern)
+- **Charts**: engagement rate by account, and median views per day by posting day. Native Excel
+  charts that read directly from the Summary tables.
+- **All videos**: every cleaned row, with frozen headers and filters
+
+**PowerPoint deck** (`report_<dataset_id>.pptx`), 5 slides
+1. Title, period and pull time
+2. At a glance: headline numbers, each with the number of videos it is based on
+3. By account (table)
+4. Engagement rate by account (chart)
+5. Median views per day by posting day (chart, with the number of videos behind each bar)
+
+Both files are built from the same calculation in the same run, so their numbers always match.
+
+### How the summary numbers are calculated
+
+| Number | Method |
+|---|---|
+| Engagement rate (per group) | Total (likes + comments) ÷ total views, over videos with complete counts. **Weighted**, so a tiny video can't outweigh a large one, unlike averaging each video's rate. |
+| Median views per day | The middle value, so one viral video can't distort what a typical video does. Videos under 1 day old are excluded. |
+| Total views | Sum of all known view counts. |
+| Base counts | Every average reports how many videos it was calculated from ("Videos in engagement rate", "Videos in views/day"), so thin groups are visible. |
+
 ## Tools
 
 | Tool | Input | Returns |
 |---|---|---|
 | `pull_youtube` | `handles`: 1–10 channel handles (e.g. `"@fallontonight"`), `limit`: videos per channel (1–50, default 50) | `dataset_id`, total videos, videos per channel, counts of hidden likes / comments off |
 | `clean_dataset` | `dataset_id` from `pull_youtube` | New `dataset_id`, the raw ID it came from, row count, counts of blank metrics, date range of posts |
+| `build_report` | `dataset_id` from `clean_dataset` | Full paths of the Excel and PowerPoint files, number of videos and accounts |
 | `export_csv` | `dataset_id` (raw or cleaned) | Full path of the CSV and its row count |
 
 **Safety:** dataset IDs are validated against a strict pattern, so a tool call can't read or write
 files outside the data folder. API errors are passed back with the API key redacted.
+
+### Output folders
+
+```
+data/
+├── raw/       ← datasets (JSON): raw pulls (youtube_...) and cleaned versions (clean_...)
+├── exports/   ← CSVs from export_csv
+└── reports/   ← Excel + PowerPoint from build_report
+```
 
 ### CSV columns
 
@@ -122,7 +164,7 @@ claude mcp add --scope user \
 **Other MCP clients:** run `social-report-mcp` with the same environment variables.
 
 Then ask, for example:
-> Pull the last 50 videos from @fallontonight, @ColbertLateShow and @JimmyKimmelLive, clean the data and give me a CSV.
+> Pull the last 50 videos from @fallontonight, @ColbertLateShow and @JimmyKimmelLive, clean the data and build a report.
 
 ### Updating
 
@@ -137,7 +179,7 @@ Then restart your agent so it starts the updated server.
 
 ## Try it without an agent
 
-`scripts/try_mcp.py` starts the server and calls all three tools in order, the way an agent would:
+`scripts/try_mcp.py` starts the server and runs pull → clean → report, the way an agent would:
 
 ```bash
 python scripts/try_mcp.py
@@ -158,7 +200,7 @@ MCP client connection, the tool list, the channel limit and the dataset-ID path 
 
 - [x] Stage 1: pull YouTube data and export to CSV
 - [x] Stage 2: clean and normalise (engagement rate, posting day/hour, views per day)
-- [ ] Stage 3: one-click Excel and PowerPoint report
+- [x] Stage 3: one-click Excel and PowerPoint report
 - [ ] Stage 4: AI-written narrative
 - [ ] Stage 5: automatic check of every number in the narrative against the source data
 
