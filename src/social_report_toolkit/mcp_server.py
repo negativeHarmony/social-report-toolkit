@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import List
+from typing import List, Dict
 
 from dotenv import load_dotenv
 from mcp.server.mcpserver import MCPServer
@@ -14,6 +14,9 @@ from .clean import clean_dataset as make_clean_dataset
 from .report import build_report as make_report
 from .summary import build_summary
 from .verify import build_facts, check_narrative as run_checks
+
+from .comments import comments_page, export_review_sheet, save_labels, score_review, theme_counts
+from .comments import pull_comments as fetch_comments
 
 MAX_CHANNELS = 10
 
@@ -71,6 +74,65 @@ def pull_youtube(handles: List[str], limit: int = 50) -> dict:
         "videos_with_hidden_likes": sum(1 for row in rows if row["likes"] is None),
         "videos_with_comments_off": sum(1 for row in rows if row["comments"] is None),
     }
+
+@mcp.tool()
+def pull_comments(video: str, limit: int = 200) -> dict:
+    """Fetch up to `limit` (1-500) top-level comments on a YouTube video (link or ID) and save
+    them as a dataset. Author names are not stored. Comments come in YouTube's relevance order
+    (most liked/discussed first), so they are NOT a random sample of all viewers.
+    Next: read every page with get_comments_page, then call save_comment_labels."""
+    limit = max(1, min(limit, 500))
+    api_key = _api_key()
+    try:
+        dataset_id = fetch_comments(video, api_key, limit)
+    except Exception as e:
+        raise RuntimeError(str(e).replace(api_key, "[REDACTED]")) from None
+    rows = load_dataset(dataset_id)["rows"]
+    return {
+        "dataset_id": dataset_id,
+        "video_title": rows[0]["video_title"],
+        "comments": len(rows),
+        "replies_not_included": sum(row["replies"] for row in rows),
+    }
+
+
+@mcp.tool()
+def get_comments_page(dataset_id: str, offset: int = 0) -> dict:
+    """Read up to 50 comments (comment_id, text, likes) from a comments dataset, starting at
+    `offset`. Keep calling with next_offset until it is null, so you have read EVERY comment
+    before choosing themes."""
+    return comments_page(dataset_id, offset)
+
+
+@mcp.tool()
+def save_comment_labels(dataset_id: str, themes: Dict[str, str], labels: Dict[str, str]) -> dict:
+    """Save one theme for every comment in a comments dataset.
+    themes: 3-9 theme names, each mapped to a one-line definition of what belongs in it
+    (names can't contain commas; 'Other' is added automatically for comments that fit nowhere).
+    labels: comment_id -> theme name, for EVERY comment.
+    Returns the new labelled dataset_id and theme counts calculated in code.
+    Next: call create_review_sheet so the user can check a random sample blind.
+    Do NOT show the user individual comment labels before they have finished that review."""
+    labelled_id = save_labels(dataset_id, themes, labels)
+    data = load_dataset(labelled_id)
+    return {"dataset_id": labelled_id, "themes": theme_counts(data["rows"], data["meta"]["themes"])}
+
+
+@mcp.tool()
+def create_review_sheet(dataset_id: str) -> dict:
+    """Create a BLIND review sheet from a labelled dataset: 30 random comments WITHOUT the AI's
+    labels, with a theme dropdown and the theme definitions. Tell the user to label every comment,
+    save the file in the same place with the same name, then ask you to score it."""
+    path = export_review_sheet(dataset_id)
+    return {"review_sheet": str(path.resolve())}
+
+
+@mcp.tool()
+def score_comment_review(dataset_id: str) -> dict:
+    """Compare the user's completed blind review with the AI's labels. Returns the agreement
+    rate, agreement_95_range (the likely range of the TRUE agreement given the small sample;
+    always report it alongside the rate), agreement per AI theme, and every disagreement."""
+    return score_review(dataset_id)
 
 
 @mcp.tool()

@@ -21,7 +21,7 @@ def data_dir() -> Path:                                                     # â†
 # Save dataset to disk and return its ID
 # Save dataset to disk and return its ID
 def save_dataset(rows: List[dict], source: str, derived_from: Optional[str] = None,
-                 pulled_at: Optional[str] = None) -> str:
+                 pulled_at: Optional[str] = None, meta: Optional[dict] = None) -> str:
     now = datetime.now(timezone.utc)
     dataset_id = f"{source}_{now:%Y%m%dT%H%M%SZ}"
     data_dir().mkdir(parents=True, exist_ok=True)
@@ -31,6 +31,7 @@ def save_dataset(rows: List[dict], source: str, derived_from: Optional[str] = No
         "created_at": now.isoformat(timespec="seconds"),
         "pulled_at": pulled_at or now.isoformat(timespec="seconds"),
         "derived_from": derived_from,
+        "meta": meta or {},
         "rows": rows,
     }
     with open(data_dir() / f"{dataset_id}.json", "w", encoding="utf-8") as f:

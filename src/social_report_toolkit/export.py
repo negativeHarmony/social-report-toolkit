@@ -18,6 +18,10 @@ COLUMNS_BY_SOURCE = {
         "views", "likes", "comments",
         "engagement_rate", "age_days", "views_per_day",
     ],
+    "comments": [
+        "pulled_at", "video_id", "video_title", "comment_id",
+        "text", "likes", "replies", "published_at",
+    ],
 }
 
 #export to csv with column sources

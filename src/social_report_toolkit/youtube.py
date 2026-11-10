@@ -79,3 +79,37 @@ def pull_channel(handle: str, api_key: str, limit: int = 50) -> List[dict]:
         {"channel_handle": handle, "channel_title": channel["title"], **video}
         for video in get_videos(video_ids, api_key)
     ]
+    
+MAX_PAGE_SIZE = 100
+
+
+def get_comments(video_id: str, api_key: str, limit: int = 200) -> List[dict]:
+    """Top-level comments on a video, most relevant first. Author names are not kept."""
+    comments = []
+    page_token = None
+    while len(comments) < limit:
+        params = {
+            "part": "snippet",
+            "videoId": video_id,
+            "maxResults": min(MAX_PAGE_SIZE, limit - len(comments)),
+            "order": "relevance",
+            "textFormat": "plainText",
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        data = _get("commentThreads", api_key, **params)
+
+        for item in data.get("items", []):
+            top = item["snippet"]["topLevelComment"]
+            comments.append({
+                "comment_id": top["id"],
+                "text": top["snippet"]["textDisplay"],
+                "likes": top["snippet"]["likeCount"],
+                "replies": item["snippet"]["totalReplyCount"],
+                "published_at": top["snippet"]["publishedAt"],
+            })
+
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+    return comments[:limit]

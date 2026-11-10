@@ -24,8 +24,11 @@ def test_lists_all_tools():
     async def action(session):
         result = await session.list_tools()
         return {tool.name for tool in result.tools}
-        assert run(action) == {"pull_youtube", "clean_dataset", "build_report",
-                           "get_report_facts", "check_narrative", "export_csv"}
+        assert run(action) == {
+        "pull_youtube", "clean_dataset", "build_report", "get_report_facts", "check_narrative",
+        "export_csv", "pull_comments", "get_comments_page", "save_comment_labels",
+        "create_review_sheet", "score_comment_review",
+    }
 
 
 def test_rejects_empty_channel_list():
